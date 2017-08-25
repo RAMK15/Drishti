@@ -383,16 +383,12 @@ public class MusicPlayerActivity extends AppCompatActivity implements GestureDet
             startActivity(getIntent());
         }
         else if(command.contains("play")){
-            if(!isPlaying){//check if you have taken care of this variable at all places
-                Intent i=new Intent(MusicPlayerActivity.this,MusicService.class);
-                startService(i);
-            }
+            Intent i=new Intent(MusicPlayerActivity.this,MusicService.class);
+            startService(i);
         }
         else if(command.contains("pause")||command.contains("stop")){
-            if(isPlaying){
-                Intent i=new Intent(MusicPlayerActivity.this,MusicService.class);
-                stopService(i);
-            }
+            Intent i=new Intent(MusicPlayerActivity.this,MusicService.class);
+            stopService(i);
         }
 
     }

@@ -63,6 +63,7 @@ public class MusicService extends Service implements MediaPlayer.OnCompletionLis
     public void onDestroy() {
         super.onDestroy();
         if(player.isPlaying())player.stop();
+        player.release();
     }
 
     @Override

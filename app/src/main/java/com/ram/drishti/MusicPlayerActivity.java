@@ -1,5 +1,6 @@
 package com.ram.drishti;
 
+import android.content.ActivityNotFoundException;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -9,6 +10,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.media.MediaMetadataRetriever;
+import android.speech.RecognizerIntent;
 import android.speech.tts.TextToSpeech;
 import android.support.v4.view.GestureDetectorCompat;
 import android.support.v7.app.AppCompatActivity;
@@ -21,6 +23,7 @@ import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Random;
@@ -34,7 +37,7 @@ public class MusicPlayerActivity extends AppCompatActivity implements GestureDet
     boolean isPlaying=false;
     boolean isLooping;
     boolean isShuffling;
-    TextView album,genre,artist,songname;
+    TextView album,genre,artist,songname,voicecommand;
     ImageView album_art;
     String path[];
     public static final String ACTION_STRING = "SONG_COMPLETE";
@@ -42,6 +45,7 @@ public class MusicPlayerActivity extends AppCompatActivity implements GestureDet
     private VelocityTracker mVelocityTracker = null;
     private int MY_DATA_CHECK_CODE=0;
     private  TextToSpeech myTTS;
+    private final int REQ_CODE_SPEECH_INPUT = 100;
 
     private BroadcastReceiver receiver=new BroadcastReceiver() {
         @Override
@@ -50,6 +54,8 @@ public class MusicPlayerActivity extends AppCompatActivity implements GestureDet
             setScreen(position);
         }
     };
+
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -61,7 +67,7 @@ public class MusicPlayerActivity extends AppCompatActivity implements GestureDet
         genre=(TextView)findViewById(R.id.genre);
         album_art=(ImageView)findViewById(R.id.album_art);
         songname=(TextView)findViewById(R.id.songname);
-
+        voicecommand=(TextView)findViewById(R.id.txtSpeechInput);
         //getting list of music files and if not already there searching the device for it
         musicdata=getSharedPreferences("musicdata", Context.MODE_PRIVATE);
         musicdataeditor=musicdata.edit();
@@ -103,13 +109,11 @@ public class MusicPlayerActivity extends AppCompatActivity implements GestureDet
         checkTTSIntent.setAction(TextToSpeech.Engine.ACTION_CHECK_TTS_DATA);
         startActivityForResult(checkTTSIntent,MY_DATA_CHECK_CODE);
     }
-
     @Override
     protected void onPause() {
         super.onPause();
         unregisterReceiver(receiver);
     }
-
     @Override
     protected void onResume() {
         super.onResume();
@@ -123,7 +127,6 @@ public class MusicPlayerActivity extends AppCompatActivity implements GestureDet
         this.mDetector.onTouchEvent(event);
         return super.onTouchEvent(event);
     }
-
     @Override
     public boolean onSingleTapConfirmed(MotionEvent e) {
         Intent i=new Intent(MusicPlayerActivity.this,MusicService.class);
@@ -140,12 +143,10 @@ public class MusicPlayerActivity extends AppCompatActivity implements GestureDet
         musicdataeditor.commit();
         return true;
     }
-
     @Override
     public boolean onDoubleTap(MotionEvent e) {
         return true;
     }
-
     @Override
     public boolean onDoubleTapEvent(MotionEvent e) {
         Intent i = new Intent(MusicPlayerActivity.this, MusicService.class);
@@ -153,32 +154,27 @@ public class MusicPlayerActivity extends AppCompatActivity implements GestureDet
         finish();
         return true;
     }
-
     @Override
     public boolean onDown(MotionEvent e) {
         return true;
     }
-
     @Override
     public void onShowPress(MotionEvent e) {
 
     }
-
     @Override
     public boolean onSingleTapUp(MotionEvent e) {
         return true;
     }
-
     @Override
     public boolean onScroll(MotionEvent e1, MotionEvent e2, float distanceX, float distanceY) {
         return false;
     }
-
     @Override
     public void onLongPress(MotionEvent e) {
+        promptSpeechInput();
 
     }
-
     @Override
     public boolean onFling(MotionEvent event1, MotionEvent event2, float velocityX, float velocityY) {
         int index1 = event1.getActionIndex();
@@ -202,34 +198,51 @@ public class MusicPlayerActivity extends AppCompatActivity implements GestureDet
         }
         else if(y2-y1<0 && theta>45 && theta<135){
             //up for shuffling
-            isShuffling=musicdata.getBoolean("isShuffling",false);
-            isShuffling=!isShuffling;
-            musicdataeditor.putBoolean("isShuffling", isShuffling);
-            if(isShuffling){
-                speakWords("shuffle on");
-            }
-            else{
-                speakWords("shuffle off");
-            }
-            musicdataeditor.commit();
+            changeShuffleState();
+
         }
         else if(y2-y1>0 && theta<-45 && theta>-135){
             //down for looping
-            isLooping=musicdata.getBoolean("isLooping",false);
-            isLooping=!isLooping;
-            musicdataeditor.putBoolean("isLooping", isLooping);
-            musicdataeditor.commit();
-            if(isLooping){
-                speakWords("loop on");
-            }
-            else {
-                speakWords("loop off");
-            }
+            changeLoopState();
         }
         else{
             //some error
         }
         return true;
+    }
+
+
+    @Override
+    public void onInit(int status) {
+        if (status == TextToSpeech.SUCCESS) {
+            myTTS.setLanguage(Locale.US);
+        }
+        else if (status == TextToSpeech.ERROR) {
+            Toast.makeText(this, "Sorry! Text To Speech failed...", Toast.LENGTH_LONG).show();
+        }
+    }
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == MY_DATA_CHECK_CODE) {
+            if (resultCode == TextToSpeech.Engine.CHECK_VOICE_DATA_PASS) {
+                myTTS = new TextToSpeech(this, this);
+            }
+            else {
+                Intent installTTSIntent = new Intent();
+                installTTSIntent.setAction(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA);
+                startActivity(installTTSIntent);
+            }
+        }
+        else if(requestCode == REQ_CODE_SPEECH_INPUT){
+            if (resultCode == RESULT_OK && null != data) {
+
+                ArrayList<String> result = data
+                        .getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+                voicecommand.setText(result.get(0));
+                executevoicecommand(result.get(0));
+            }
+        }
     }
     public  void setScreen(int position){
         MediaMetadataRetriever metaRetriver;
@@ -304,34 +317,83 @@ public class MusicPlayerActivity extends AppCompatActivity implements GestureDet
         startService(i);
         setScreen(position);
     }
-
-    @Override
-    public void onInit(int status) {
-        if (status == TextToSpeech.SUCCESS) {
-            myTTS.setLanguage(Locale.US);
+    public void changeShuffleState(){
+        isShuffling=musicdata.getBoolean("isShuffling",false);
+        isShuffling = !isShuffling;
+        musicdataeditor.putBoolean("isShuffling", isShuffling);
+        if(isShuffling){
+            speakWords("shuffle on");
         }
-        else if (status == TextToSpeech.ERROR) {
-            Toast.makeText(this, "Sorry! Text To Speech failed...", Toast.LENGTH_LONG).show();
+        else{
+            speakWords("shuffle off");
         }
+        musicdataeditor.commit();
     }
-
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == MY_DATA_CHECK_CODE) {
-            if (resultCode == TextToSpeech.Engine.CHECK_VOICE_DATA_PASS) {
-                myTTS = new TextToSpeech(this, this);
-            }
-            else {
-                Intent installTTSIntent = new Intent();
-                installTTSIntent.setAction(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA);
-                startActivity(installTTSIntent);
-            }
+    public  void changeLoopState(){
+        isLooping=musicdata.getBoolean("isLooping",false);
+        isLooping=!isLooping;
+        musicdataeditor.putBoolean("isLooping", isLooping);
+        musicdataeditor.commit();
+        if(isLooping){
+            speakWords("loop on");
+        }
+        else {
+            speakWords("loop off");
         }
     }
     private void speakWords(String speech){
-        myTTS.speak(speech,TextToSpeech.QUEUE_ADD,null);
+        myTTS.speak(speech, TextToSpeech.QUEUE_ADD, null);
         //shut down texttospeech some time using myTTS.shutdown()
     }
+    /**
+     * Showing google speech input dialog
+     * */
+    private void promptSpeechInput() {
+        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault());
+        intent.putExtra(RecognizerIntent.EXTRA_PROMPT,"speak");
+        try {
+            startActivityForResult(intent, REQ_CODE_SPEECH_INPUT);
+        } catch (ActivityNotFoundException a) {
+            Toast.makeText(getApplicationContext(),"voice commands not supported",Toast.LENGTH_SHORT).show();
+        }
+    }
+    public void executevoicecommand(String command){
+        command=command.toLowerCase();
+        Toast.makeText(this, command, Toast.LENGTH_LONG).show();
+        if(command.contains("next")||command.contains("forward")){
+            playnextsong();
+        }
+        else if(command.contains("loop")){
+            changeLoopState();
+        }
+        else if(command.contains("shuffle")){
+            changeShuffleState();
+        }
+        else if(command.contains("quit")||command.contains("exit")){
+            Intent i = new Intent(MusicPlayerActivity.this, MusicService.class);
+            stopService(i);
+            finish();
+        }
+        else if(command.contains("refresh")||command.contains("added")){
+            musicdataeditor.remove("mp3path");
+            musicdataeditor.commit();
+            finish();
+            startActivity(getIntent());
+        }
+        else if(command.contains("play")){
+            if(!isPlaying){//check if you have taken care of this variable at all places
+                Intent i=new Intent(MusicPlayerActivity.this,MusicService.class);
+                startService(i);
+            }
+        }
+        else if(command.contains("pause")||command.contains("stop")){
+            if(isPlaying){
+                Intent i=new Intent(MusicPlayerActivity.this,MusicService.class);
+                stopService(i);
+            }
+        }
 
+    }
 }

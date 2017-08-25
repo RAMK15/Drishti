@@ -9,6 +9,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.media.MediaMetadataRetriever;
+import android.speech.tts.TextToSpeech;
 import android.support.v4.view.GestureDetectorCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
@@ -21,10 +22,11 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Random;
 import java.util.Set;
 
-public class MusicPlayerActivity extends AppCompatActivity implements GestureDetector.OnGestureListener,GestureDetector.OnDoubleTapListener {
+public class MusicPlayerActivity extends AppCompatActivity implements GestureDetector.OnGestureListener,GestureDetector.OnDoubleTapListener,TextToSpeech.OnInitListener {
     SharedPreferences musicdata;
     SharedPreferences.Editor musicdataeditor;
     Set<String> mp3path=new HashSet<String>();
@@ -38,6 +40,8 @@ public class MusicPlayerActivity extends AppCompatActivity implements GestureDet
     public static final String ACTION_STRING = "SONG_COMPLETE";
     private GestureDetectorCompat mDetector;
     private VelocityTracker mVelocityTracker = null;
+    private int MY_DATA_CHECK_CODE=0;
+    private  TextToSpeech myTTS;
 
     private BroadcastReceiver receiver=new BroadcastReceiver() {
         @Override
@@ -95,6 +99,9 @@ public class MusicPlayerActivity extends AppCompatActivity implements GestureDet
         setScreen(position);
         mDetector=new GestureDetectorCompat(this,this);
         mDetector.setOnDoubleTapListener(this);
+        Intent checkTTSIntent=new Intent();
+        checkTTSIntent.setAction(TextToSpeech.Engine.ACTION_CHECK_TTS_DATA);
+        startActivityForResult(checkTTSIntent,MY_DATA_CHECK_CODE);
     }
 
     @Override
@@ -185,23 +192,39 @@ public class MusicPlayerActivity extends AppCompatActivity implements GestureDet
         double theta=Math.toDegrees(Math.atan2(y1-y2,x2-x1));
         if(x2-x1<0 && (theta>135 && theta<=180) || (theta<-135 && theta>=-180)){
             //left swipe for next song
+            speakWords("next song");
             playnextsong();
         }
         else if(x2-x1>0 && theta<45 && theta>-45){
+            speakWords("previous song");
             playprevsong();
             //right swipe for prev song
         }
         else if(y2-y1<0 && theta>45 && theta<135){
             //up for shuffling
             isShuffling=musicdata.getBoolean("isShuffling",false);
-            musicdataeditor.putBoolean("isShuffling",(!isShuffling));
+            isShuffling=!isShuffling;
+            musicdataeditor.putBoolean("isShuffling", isShuffling);
+            if(isShuffling){
+                speakWords("shuffle on");
+            }
+            else{
+                speakWords("shuffle off");
+            }
             musicdataeditor.commit();
         }
         else if(y2-y1>0 && theta<-45 && theta>-135){
             //down for looping
             isLooping=musicdata.getBoolean("isLooping",false);
-            musicdataeditor.putBoolean("isLooping",(!isLooping));
+            isLooping=!isLooping;
+            musicdataeditor.putBoolean("isLooping", isLooping);
             musicdataeditor.commit();
+            if(isLooping){
+                speakWords("loop on");
+            }
+            else {
+                speakWords("loop off");
+            }
         }
         else{
             //some error
@@ -281,4 +304,34 @@ public class MusicPlayerActivity extends AppCompatActivity implements GestureDet
         startService(i);
         setScreen(position);
     }
+
+    @Override
+    public void onInit(int status) {
+        if (status == TextToSpeech.SUCCESS) {
+            myTTS.setLanguage(Locale.US);
+        }
+        else if (status == TextToSpeech.ERROR) {
+            Toast.makeText(this, "Sorry! Text To Speech failed...", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == MY_DATA_CHECK_CODE) {
+            if (resultCode == TextToSpeech.Engine.CHECK_VOICE_DATA_PASS) {
+                myTTS = new TextToSpeech(this, this);
+            }
+            else {
+                Intent installTTSIntent = new Intent();
+                installTTSIntent.setAction(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA);
+                startActivity(installTTSIntent);
+            }
+        }
+    }
+    private void speakWords(String speech){
+        myTTS.speak(speech,TextToSpeech.QUEUE_ADD,null);
+        //shut down texttospeech some time using myTTS.shutdown()
+    }
+
 }
